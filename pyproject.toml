@@ -20,7 +20,7 @@ classifiers = [
 ]
 dependencies = [
   "pytest>=8",
-  "pytest-embedded-arduino-cli>=1.7.0",
+  "pytest-embedded-arduino-cli>=1.7.1",
   "oep-client-python>=0.0.4",
   "pyserial>=3.5",
 ]
