@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pytest-embedded-arduino-cli-ch32rv"
+version = "0.0.1"
+description = "pytest-embedded-arduino-cli plugin for CH32 boards flashed by ch32rv: the ch32rv path, the OEP probe host, and the DUT's UART on the probe"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+  { name = "TANAKA Masayuki" },
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Framework :: Pytest",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Testing",
+]
+dependencies = [
+  "pytest>=8",
+  "pytest-embedded-arduino-cli>=1.7.0",
+  "oep-client-python>=0.0.4",
+  "pyserial>=3.5",
+]
+
+[project.entry-points.pytest11]
+embedded-arduino-cli-ch32rv = "pytest_embedded_arduino_cli_ch32rv.plugin"
+
+[project.urls]
+Homepage = "https://github.com/ch32-riscv-ug/pytest-embedded-arduino-cli-ch32rv"
+Repository = "https://github.com/ch32-riscv-ug/pytest-embedded-arduino-cli-ch32rv"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/pytest_embedded_arduino_cli_ch32rv"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
