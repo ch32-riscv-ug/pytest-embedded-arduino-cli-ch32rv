@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+- (EN) The test's port comes off pytest-embedded-arduino-cli's monitor wrapper through its `MonitorTarget` (public API since 1.8.0, now the lower bound) instead of this plugin slicing the `arduinomonitor://` string, whose spelling is not a contract.
+- (JA) 試験の port は pytest-embedded-arduino-cli の `MonitorTarget`（1.8.0 から公開 API、下限もそこへ）で monitor の包みを外す。`arduinomonitor://` の文字列をこのプラグインが切っていたのをやめた（綴りは契約ではない）。
 
 ## 0.0.3
 - (EN) `oep_host` waits up to 10 s for the broker the dut's monitor starts, instead of failing when a test asks for it before anything was read through the monitor.
