@@ -52,8 +52,13 @@ def run_ch32rv(ch32rv: Path, *args: str, timeout: float = 30.0) -> dict:
 
 def wch_link_uart(ch32rv: Path, address: str) -> str | None:
     """The UART bridge (CDC serial port) of the WCH-Link behind `address`, or None when it is not a WCH-Link:
-    `wchlink://<serial>` names it by serial; a serial port path is a WCH-Link's own CDC when `probe list` says so."""
-    probes = run_ch32rv(ch32rv, "probe", "list", "--json").get("result", {}).get("probes", [])
+    `wchlink://<serial>` names it by serial; a serial port path is a WCH-Link's own CDC when `probe list` says so.
+
+    Only the WCH-Link rows: from ch32rv 0.13.2 `probe list` also carries the OEP probes it enumerates over
+    USB (`kind: "oep"`, their CDC in `ports`), and an OEP probe's CDC is the OEP link, not a UART bridge.
+    A row without `kind` (ch32rv up to 0.13.1) is a WCH-Link."""
+    probes = [p for p in run_ch32rv(ch32rv, "probe", "list", "--json").get("result", {}).get("probes", [])
+              if p.get("kind", "wchlink") == "wchlink"]
     if address.startswith("wchlink://"):
         serial = address[len("wchlink://"):]
         for p in probes:

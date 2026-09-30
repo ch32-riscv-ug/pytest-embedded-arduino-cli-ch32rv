@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+- (EN) `ch32_uart` reads only the WCH-Link rows of ch32rv's `probe list` (`kind: "wchlink"`, or no `kind` before ch32rv 0.13.2): the OEP probes that list now carries have their CDC in `ports` too, and that port is the OEP link, not a UART bridge.
+- (JA) `ch32_uart` は ch32rv の `probe list` の WCH-Link の行（`kind: "wchlink"`、ch32rv 0.13.2 より前は `kind` 無し）だけを読む。一覧に入るようになった OEP の probe も `ports` に CDC を持つが、それは OEP のリンクで UART bridge ではない。
 - (EN) The test's port comes off pytest-embedded-arduino-cli's monitor wrapper through its `MonitorTarget` (public API since 1.8.0, now the lower bound) instead of this plugin slicing the `arduinomonitor://` string, whose spelling is not a contract.
 - (JA) 試験の port は pytest-embedded-arduino-cli の `MonitorTarget`（1.8.0 から公開 API、下限もそこへ）で monitor の包みを外す。`arduinomonitor://` の文字列をこのプラグインが切っていたのをやめた（綴りは契約ではない）。
 
