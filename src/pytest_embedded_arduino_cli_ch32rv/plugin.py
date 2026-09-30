@@ -18,7 +18,6 @@ import re
 import subprocess
 import sys
 import time
-import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -31,11 +30,13 @@ BROKER_WAIT_S = 10.0             # for the dut's monitor to start the broker
 # ------------------------------------------------------------------ the test's port and the probe behind it
 
 def dut_address(config: pytest.Config) -> str:
-    """The IDE-style port the test runs against: --port as resolved by pytest-embedded-arduino-cli, with the
-    arduinomonitor:// wrapper it adds for a platform monitor taken off (`arduinomonitor://<address>?sketch=...`)."""
+    """The IDE-style port the test runs against: --port as resolved by pytest-embedded-arduino-cli, with the wrapper
+    it adds for a platform monitor taken off through its own MonitorTarget (public API since 1.8.0; the URL's
+    spelling is not a contract)."""
+    from pytest_embedded_arduino_cli import MonitorTarget, is_monitor_url
     port = config.getoption("port", None) or ""
-    if port.startswith("arduinomonitor://"):
-        port = urllib.parse.unquote(port[len("arduinomonitor://"):].split("?", 1)[0])
+    if is_monitor_url(port):
+        port = MonitorTarget.from_url(port).address
     if not port:
         raise pytest.UsageError("pytest-embedded-arduino-cli-ch32rv: no port (--port, or TEST_SERIAL_PORT_<PROFILE>)")
     return port

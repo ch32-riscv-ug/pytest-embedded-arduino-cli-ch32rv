@@ -12,11 +12,20 @@ def config_with_port(port):
     return types.SimpleNamespace(getoption=lambda name, default=None: port if name == "port" else default)
 
 
+def wrapped(address: str, protocol: str, profile: str) -> str:
+    """A platform-monitor port the way pytest-embedded-arduino-cli hands it over. Built through its MonitorTarget:
+    the URL's spelling is the upstream plugin's business (its public API since 1.8.0), not a string this plugin knows."""
+    from pathlib import Path
+
+    from pytest_embedded_arduino_cli import MonitorTarget
+    return MonitorTarget(address, Path("/tmp/x"), profile=profile, protocol=protocol).to_url()
+
+
 @pytest.mark.parametrize("port, address", [
     ("/dev/ttyACM3", "/dev/ttyACM3"),
     ("wchlink://FBC18F0680B0", "wchlink://FBC18F0680B0"),
-    ("arduinomonitor:///dev/ttyACM3?sketch=%2Ftmp%2Fx&profile=ch32v203", "/dev/ttyACM3"),
-    ("arduinomonitor://oep%3A%2F%2F30eda0e31108-hs%2Fx035?profile=ch32x035", "oep://30eda0e31108-hs/x035"),
+    (wrapped("/dev/ttyACM3", "serial", "ch32v203"), "/dev/ttyACM3"),
+    (wrapped("oep://30eda0e31108-hs/x035", "oep", "ch32x035"), "oep://30eda0e31108-hs/x035"),
 ])
 def test_dut_address_takes_the_monitor_wrapper_off(port, address):
     assert plugin.dut_address(config_with_port(port)) == address
