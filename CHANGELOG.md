@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+
+## 0.0.3
 - (EN) `oep_host` waits up to 10 s for the broker the dut's monitor starts, instead of failing when a test asks for it before anything was read through the monitor.
 - (JA) `oep_host` は dut の monitor が起こすブローカーを最大 10 秒待つ。monitor から何も読む前に試験が求めると失敗していた。
 
