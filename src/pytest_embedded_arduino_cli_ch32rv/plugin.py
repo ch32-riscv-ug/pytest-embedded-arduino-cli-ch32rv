@@ -25,6 +25,7 @@ import pytest
 
 LEASE_MS = 60000                 # oep-spec: probes accept 1000..60000 as asked
 KEEPALIVE_S = LEASE_MS / 3000.0  # refresh a third of the way in, on the next use
+BROKER_WAIT_S = 10.0             # for the dut's monitor to start the broker
 
 
 # ------------------------------------------------------------------ the test's port and the probe behind it
@@ -213,10 +214,18 @@ def oep_host(request: pytest.FixtureRequest, ch32rv: Path, dut):
     """A session on the OEP probe behind the test's port, through the broker the dut's monitor runs. Fails (does
     not skip) when the port is not an OEP probe: a test that asks for it needs one."""
     address = dut_address(request.config)
-    info = run_ch32rv(ch32rv, "broker", "endpoint", "--probe", f"port:{address}", "--json")
-    endpoint = info.get("endpoint") or info.get("result", {}).get("endpoint")
+    # The broker is the one the dut's monitor starts, and `arduino-cli monitor` takes about a second to open
+    # its session; a test that asks for oep_host first thing would otherwise find no broker yet.
+    deadline = time.monotonic() + BROKER_WAIT_S
+    while True:
+        info = run_ch32rv(ch32rv, "broker", "endpoint", "--probe", f"port:{address}", "--json")
+        endpoint = info.get("endpoint") or info.get("result", {}).get("endpoint")
+        if endpoint or time.monotonic() >= deadline:
+            break
+        time.sleep(0.2)
     if not endpoint:
-        raise RuntimeError(f"no ch32rv broker for {address}: is it an OEP probe, and did the dut's monitor open?")
+        raise RuntimeError(f"no ch32rv broker for {address} after {BROKER_WAIT_S:g} s: is it an OEP probe, and "
+                           f"did the dut's monitor open?")
     h = OepHost(endpoint, owner=f"pytest {request.node.nodeid}"[:32])
     try:
         yield h
