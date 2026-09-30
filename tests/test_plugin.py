@@ -57,16 +57,23 @@ def test_channel_expect_times_out_with_the_tail_in_the_message():
         ch.expect_exact("never", timeout=0.1)
 
 
+# ch32rv `probe list`: rows without `kind` (up to 0.13.1) are WCH-Links; from 0.13.2 every row has a
+# `kind` and the OEP probes ch32rv enumerates over USB are there too, their CDC (the OEP link itself,
+# not a UART bridge) in `ports`.
 PROBES = {"result": {"probes": [
     {"serial": "FBC18F0680B0", "ports": ["/dev/ttyACM3"]},
-    {"serial": "434A124C5596", "ports": ["/dev/ttyACM1"]},
+    {"serial": "434A124C5596", "ports": ["/dev/ttyACM1"], "kind": "wchlink"},
+    {"serial": "9489dd2ae0953650", "ports": ["/dev/ttyACM5"], "kind": "oep", "model": "OEP probe (RP2350)"},
 ]}}
 
 
 @pytest.mark.parametrize("address, bridge", [
     ("wchlink://FBC18F0680B0", "/dev/ttyACM3"),
     ("/dev/ttyACM1", "/dev/ttyACM1"),
+    ("wchlink://434A124C5596", "/dev/ttyACM1"),
     ("oep://30eda0e31108-hs/x035", None),
+    ("oep://9489dd2ae0953650/l103", None),
+    ("/dev/ttyACM5", None),
     ("/dev/ttyUSB0", None),
 ])
 def test_wch_link_uart_maps_the_port_to_the_links_bridge(monkeypatch, address, bridge):
