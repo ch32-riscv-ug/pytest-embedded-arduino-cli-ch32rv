@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+- (EN) Require oep-client-python 0.0.5, the version the fixtures are tested with (its USB exit fix does not touch `oep_host`, which reaches the probe through ch32rv's broker over TCP).
+- (JA) oep-client-python 0.0.5 を必須に（fixture を確かめた版）。0.0.5 の USB の終了の直しは、ch32rv のブローカーへ TCP でつなぐ `oep_host` には関わらない。
 
 ## 0.0.1
 - (EN) First beta. Three fixtures for pytest-embedded-arduino-cli tests on CH32 boards flashed by ch32rv: `ch32rv` (the platform's ch32rv, from `runtime.tools.ch32rv.path`), `oep_host` (an oep-client-python session on the OEP probe behind the test's port, through ch32rv's broker, with a 60 s lease refreshed on use), and `ch32_uart` (the DUT's UART as the probe sees it - a WCH-Link's UART bridge or an OEP probe's fixture UART - opened with `open(baud)` and read with `expect` / `expect_exact` / `write`, like `dut`).
