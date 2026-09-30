@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+
+## 0.0.2
 - (EN) Require oep-client-python 0.0.5, the version the fixtures are tested with (its USB exit fix does not touch `oep_host`, which reaches the probe through ch32rv's broker over TCP).
 - (JA) oep-client-python 0.0.5 を必須に（fixture を確かめた版）。0.0.5 の USB の終了の直しは、ch32rv のブローカーへ TCP でつなぐ `oep_host` には関わらない。
 
