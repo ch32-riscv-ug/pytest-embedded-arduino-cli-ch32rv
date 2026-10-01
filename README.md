@@ -4,7 +4,7 @@
 
 A [pytest-embedded-arduino-cli](https://github.com/tanakamasayuki/pytest-embedded-arduino-cli) plugin for CH32 boards
 flashed by [ch32rv](https://github.com/ch32-riscv-ug/ch32rv) (the uploader the
-[ArduinoCore-CH32](https://github.com/ch32-riscv-ug/ArduinoCore-CH32) platform bundles).
+[ArduinoCore-CH32RV](https://github.com/ch32-riscv-ug/ArduinoCore-CH32RV) platform bundles).
 
 pytest-embedded-arduino-cli already uploads with ch32rv and gives the test a `dut` read through ch32rv's monitor (pick
 its `source` - `uart`, `dmseq`, ... - with the profile's `port_config` in `sketch.yaml`). This plugin adds:
