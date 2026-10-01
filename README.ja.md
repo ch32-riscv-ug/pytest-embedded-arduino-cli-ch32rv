@@ -2,7 +2,7 @@
 
 [English](README.md)
 
-[ch32rv](https://github.com/ch32-riscv-ug/ch32rv)（[ArduinoCore-CH32](https://github.com/ch32-riscv-ug/ArduinoCore-CH32)
+[ch32rv](https://github.com/ch32-riscv-ug/ch32rv)（[ArduinoCore-CH32RV](https://github.com/ch32-riscv-ug/ArduinoCore-CH32RV)
 が同梱する書き込みツール）で書く CH32 の板のための、[pytest-embedded-arduino-cli](https://github.com/tanakamasayuki/pytest-embedded-arduino-cli)
 のプラグイン。
 
