@@ -15,9 +15,11 @@ its `source` - `uart`, `dmseq`, ... - with the profile's `port_config` in `sketc
 | `oep_host` | an [oep-client-python](https://pypi.org/project/oep-client-python/) session on the OEP probe behind the port, through ch32rv's broker (`.host` is the Host) |
 | `ch32_uart` | the DUT's UART as the probe sees it: `ch32_uart.open(baud)` returns a channel with `expect` / `expect_exact` / `write`, like `dut` |
 
-`ch32_uart` opens a WCH-Link's UART bridge (the CDC serial port of the Link behind the port), or on an OEP probe the
-`oep.fixture.uart` whose pins the probe's saved plan assigns (`oep config plan <probe> oep.fixture.uart#<n> rx=<ch>
-tx=<ch> --save`). Which DUT USART and route are wired to the probe is the test's business, not the plugin's.
+`ch32_uart` opens a WCH-Link's UART bridge (the CDC serial port of the Link behind the port), or on an OEP probe an
+`oep.fixture.uart` planned onto the port's `rx` / `tx` lines, found from the labels the probe keeps (OEP host guide
+§5.3: `<port>.rx` / `<port>.tx`, e.g. `oep config label <probe> 22 v003.rx --save`). The port is the `<port>` of an
+`oep://<probe>/<port>` test port; a probe that names several ports needs that. Which DUT USART and route are wired to
+the probe is the test's business, not the plugin's.
 
 The OEP session holds a 60 s lease, refreshed whenever the test uses it; a test that stays quiet for longer loses it.
 

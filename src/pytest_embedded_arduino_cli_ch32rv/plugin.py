@@ -73,6 +73,15 @@ def wch_link_uart(ch32rv: Path, address: str) -> str | None:
     return None
 
 
+def oep_port(address: str) -> str | None:
+    """The port of an `oep://<probe>/<port>[/<target>]` address (host guide §5.3), or None: no port in it, `any`,
+    or not an oep:// address."""
+    if not address.startswith("oep://"):
+        return None
+    parts = address[len("oep://"):].split("/")
+    return parts[1] if len(parts) > 1 and parts[1] and parts[1] != "any" else None
+
+
 # ------------------------------------------------------------------ one expect-able byte channel
 
 class Channel:
@@ -134,7 +143,7 @@ class Ch32Uart:
             self._close = s.close
         else:
             host = self._request.getfixturevalue("oep_host")
-            self.channel = host.fixture_uart(baud, name=f"uart {self.address} @{baud}")
+            self.channel = host.fixture_uart(baud, name=f"uart {self.address} @{baud}", port=oep_port(self.address))
             self._close = None
         return self.channel
 
@@ -164,17 +173,39 @@ class OepHost:
             self.host.keepalive()
         self._last = time.monotonic()
 
-    def fixture_uart(self, baud: int, name: str) -> Channel:
-        """The first oep.fixture.uart that takes `baud`: one whose pins the probe's saved plan assigned
-        (`oep config plan <probe> oep.fixture.uart#<n> rx=.. tx=.. --save`); the others refuse as unavailable."""
-        from oep_client import core, fixture, host as oh
+    def fixture_uart(self, baud: int, name: str, port: str | None = None) -> Channel:
+        """The first oep.fixture.uart that takes `baud`, planned onto the port's rx / tx lines (host guide §5.3:
+        the labels `<port>.rx` / `<port>.tx` the probe's settings keep; with one port, `rx` / `tx` too, then the
+        firmware's). `port` is the port's name, the `<port>` of `oep://<probe>/<port>`; without it the probe may
+        name one port at most. The plan is the session's: it ends with the session."""
+        from oep_client import config, core, fixture, host as oh, registry
+        RX, TX = (registry.FIXTURE_UART.enum["role"][r] for r in ("rx", "tx"))
+        labels = [(it.channel, it.text) for it in config.ProbeConfig(self.host).items() if isinstance(it, config.Label)]
+        ports = config.ports_named(labels)
+        if port is None and len(ports) > 1:
+            raise RuntimeError(f"the probe names ports {', '.join(ports)}: give the test's port as "
+                               f"oep://<probe>/<port> to say which one the DUT's UART is on")
+        profile = port if port is not None else (ports[0] if ports else None)
+        firmware = core.firmware_labels(self.host)
+        rx, tx = (config.line_from_labels(labels, line, profile, firmware) for line in ("rx", "tx"))
+        if rx is None or tx is None:
+            where = f"{profile}." if profile else ""
+            raise RuntimeError(f"no single {where}rx / {where}tx line in the probe's labels (rx {rx}, tx {tx}; "
+                               f"ports: {', '.join(ports) or 'none'}): label them, oep config label <probe> <ch> {where}rx "
+                               f"(and {where}tx) --save")
         last = None
         for fn in core.find_all(self.host, "oep.fixture.uart"):
             io = fixture.FixtureUartIO(self.host, fn)
             try:
-                io.configure(baud)
+                core.plan_apply(self.host, [(fn, RX, rx), (fn, TX, tx)])
             except oh.Rejected as e:
                 last = e
+                continue
+            try:
+                io.configure(baud)
+            except oh.Rejected as e:          # free the pins for the next instance
+                last = e
+                core.plan_release(self.host, [fn])
                 continue
 
             def read(io=io):
@@ -185,9 +216,8 @@ class OepHost:
                 self.touch()
                 io.write(data)
 
-            return Channel(read, write, f"{name} (fn {fn})")
-        raise RuntimeError(f"no oep.fixture.uart on this probe has pins for the DUT's UART ({last}); give one a "
-                           f"plan: oep config plan <probe> oep.fixture.uart#<n> rx=<ch> tx=<ch> --save")
+            return Channel(read, write, f"{name} (fn {fn}, rx {rx}, tx {tx})")
+        raise RuntimeError(f"no oep.fixture.uart on this probe takes rx {rx} / tx {tx} at {baud} baud ({last})")
 
     def close(self) -> None:
         try:

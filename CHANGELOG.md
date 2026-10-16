@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+- (EN) Follow the reworked OEP spec (oep-spec 675288a; oep-client-python 0.0.33, now the lower bound): probes keep no saved plan, so `ch32_uart` on an OEP probe plans an `oep.fixture.uart` onto the port's `rx` / `tx` lines itself, found from the probe's labels (host guide §5.3: `<port>.rx` / `<port>.tx`; with one port also `rx` / `tx`, then the firmware's), and then configures it. The port is the `<port>` of an `oep://<probe>/<port>` test port; a probe that names several ports without one stops with an error asking for it, and missing lines stop with one asking for the labels (`oep config label <probe> <ch> <port>.rx --save`). The plan is the session's and ends with it.
+- (JA) 作り直された OEP 仕様（oep-spec 675288a。oep-client-python 0.0.33 を下限に）に追従: probe は plan を保存しないので、OEP の probe の `ch32_uart` は probe のラベルから口の `rx` / `tx` の線を引き（host ガイド §5.3: `<口>.rx` / `<口>.tx`。口が 1 つなら `rx` / `tx`、最後に firmware のもの）、`oep.fixture.uart` をそこへ自分で plan してから configure する。口は試験の port `oep://<probe>/<口>` の `<口>`。口を複数名付けた probe で口の指定が無ければそれを求めるエラーで、線が無ければラベルを求めるエラー（`oep config label <probe> <ch> <口>.rx --save`）で止まる。plan は session のもので、session とともに終わる。
 
 ## 0.0.4
 - (EN) `ch32_uart` reads only the WCH-Link rows of ch32rv's `probe list` (`kind: "wchlink"`, or no `kind` before ch32rv 0.13.2): the OEP probes that list now carries have their CDC in `ports` too, and that port is the OEP link, not a UART bridge.

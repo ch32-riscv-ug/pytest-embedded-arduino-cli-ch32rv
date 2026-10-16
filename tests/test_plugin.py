@@ -31,6 +31,17 @@ def test_dut_address_takes_the_monitor_wrapper_off(port, address):
     assert plugin.dut_address(config_with_port(port)) == address
 
 
+@pytest.mark.parametrize("address, port", [
+    ("oep://30eda0e31108-hs/x035", "x035"),
+    ("oep://30eda0e31108-hs/x035/ch32x035-0123456789abcdef", "x035"),
+    ("oep://30eda0e31108-hs", None),
+    ("oep://any/any/ch32v003-0123456789abcdef", None),
+    ("/dev/ttyACM3", None),
+])
+def test_oep_port_is_the_port_of_an_oep_address(address, port):
+    assert plugin.oep_port(address) == port
+
+
 def test_dut_address_without_a_port_is_a_usage_error():
     with pytest.raises(pytest.UsageError):
         plugin.dut_address(config_with_port(None))
