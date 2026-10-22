@@ -178,21 +178,22 @@ class OepHost:
         the labels `<port>.rx` / `<port>.tx` the probe's settings keep; with one port, `rx` / `tx` too, then the
         firmware's). `port` is the port's name, the `<port>` of `oep://<probe>/<port>`; without it the probe may
         name one port at most. The plan is the session's: it ends with the session."""
-        from oep_client import config, core, fixture, host as oh, registry
+        from oep_client import core, fixture, host as oh, registry, settings
         RX, TX = (registry.FIXTURE_UART.enum["role"][r] for r in ("rx", "tx"))
-        labels = [(it.channel, it.text) for it in config.ProbeConfig(self.host).items() if isinstance(it, config.Label)]
-        ports = config.ports_named(labels)
+        # Every channel label (fixed / default / user) from the core's settings: the firmware's own are among them,
+        # so no separate firmware list is passed (oep-client-python 0.0.37, firmware 0.0.36).
+        labels = settings.labels(self.host)
+        ports = settings.ports_named(labels)
         if port is None and len(ports) > 1:
             raise RuntimeError(f"the probe names ports {', '.join(ports)}: give the test's port as "
                                f"oep://<probe>/<port> to say which one the DUT's UART is on")
         profile = port if port is not None else (ports[0] if ports else None)
-        firmware = core.firmware_labels(self.host)
-        rx, tx = (config.line_from_labels(labels, line, profile, firmware) for line in ("rx", "tx"))
+        rx, tx = (settings.line_from_labels(labels, line, profile) for line in ("rx", "tx"))
         if rx is None or tx is None:
             where = f"{profile}." if profile else ""
             raise RuntimeError(f"no single {where}rx / {where}tx line in the probe's labels (rx {rx}, tx {tx}; "
-                               f"ports: {', '.join(ports) or 'none'}): label them, oep config label <probe> <ch> {where}rx "
-                               f"(and {where}tx) --save")
+                               f"ports: {', '.join(ports) or 'none'}): label them, oep settings set <probe> core "
+                               f"channel.<GPIO>.label={where}rx channel.<GPIO>.label={where}tx --save")
         last = None
         for fn in core.find_all(self.host, "oep.fixture.uart"):
             io = fixture.FixtureUartIO(self.host, fn)

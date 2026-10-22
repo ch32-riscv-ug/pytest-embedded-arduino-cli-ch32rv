@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+- (EN) Follow OEP firmware 0.0.36, which moved the probe's settings into the core (fn 0's settings ops, `channel.{}.label`): `ch32_uart` reads the labels with oep-client-python 0.0.37's `settings.labels()` (now the lower bound; `oep_client.config` and `oep.probe.config` are gone). Every label - fixed, default and user - comes in one list, so the firmware's own are no longer passed separately. The hint for missing lines names the new command (`oep settings set <probe> core channel.<GPIO>.label=<port>.rx ... --save`).
+- (JA) 設定を core へ移した OEP ファーム 0.0.36（fn 0 の settings、`channel.{}.label`）に追従: `ch32_uart` は oep-client-python 0.0.37 の `settings.labels()` でラベルを読む（これを下限に。`oep_client.config` と `oep.probe.config` は無くなった）。固定・既定・利用者のラベルが 1 つの一覧で来るので、firmware のラベルを別に渡すのをやめた。線が無いときの案内も新しいコマンド（`oep settings set <probe> core channel.<GPIO>.label=<口>.rx ... --save`）にした。
 
 ## 0.0.5
 - (EN) Follow the reworked OEP spec (oep-spec 675288a; oep-client-python 0.0.33, now the lower bound): probes keep no saved plan, so `ch32_uart` on an OEP probe plans an `oep.fixture.uart` onto the port's `rx` / `tx` lines itself, found from the probe's labels (host guide §5.3: `<port>.rx` / `<port>.tx`; with one port also `rx` / `tx`, then the firmware's), and then configures it. The port is the `<port>` of an `oep://<probe>/<port>` test port; a probe that names several ports without one stops with an error asking for it, and missing lines stop with one asking for the labels (`oep config label <probe> <ch> <port>.rx --save`). The plan is the session's and ends with it.

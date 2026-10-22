@@ -17,7 +17,7 @@ its `source` - `uart`, `dmseq`, ... - with the profile's `port_config` in `sketc
 
 `ch32_uart` opens a WCH-Link's UART bridge (the CDC serial port of the Link behind the port), or on an OEP probe an
 `oep.fixture.uart` planned onto the port's `rx` / `tx` lines, found from the labels the probe keeps (OEP host guide
-§5.3: `<port>.rx` / `<port>.tx`, e.g. `oep config label <probe> 22 v003.rx --save`). The port is the `<port>` of an
+§5.3: `<port>.rx` / `<port>.tx`, e.g. `oep settings set <probe> core channel.GPIO22.label=v003.rx --save`). The port is the `<port>` of an
 `oep://<probe>/<port>` test port; a probe that names several ports needs that. Which DUT USART and route are wired to
 the probe is the test's business, not the plugin's.
 

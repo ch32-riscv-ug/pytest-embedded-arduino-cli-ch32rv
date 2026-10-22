@@ -43,16 +43,16 @@ wheels = [
 
 [[package]]
 name = "oep-client-python"
-version = "0.0.33"
+version = "0.0.37"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pyserial" },
     { name = "pyusb" },
     { name = "tomli", marker = "python_full_version < '3.11'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b2/8d/9fbdfba4b7953d7b56dae6eca976b31906afaf7c94d5197adcfd583ffef8/oep_client_python-0.0.33.tar.gz", hash = "sha256:395ad556921be480eb3c85d948e713f2c6eb7153fa5ad0becd30e710bd463abd", size = 2110004, upload-time = "2026-10-16T07:55:40.305Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3c/ca/be4a59b475ffa6d14bae01ae3c67bfeb604a3461cb839319b018e790df37/oep_client_python-0.0.37.tar.gz", hash = "sha256:2ecbb21e70a1f238093a622ca775d2e745d3a8c9dec5b5abcff77a7cc05efe2a", size = 2125078, upload-time = "2026-10-22T11:32:48.659Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/78/a4/1b3f33eb8cac0090950c9105a56d2416c1c84a8795cb9a06802f9c16fc95/oep_client_python-0.0.33-py3-none-any.whl", hash = "sha256:15024721130f64444b57e14e6b74909c03bdf3f8ea4a12247f2d79e2080f94b6", size = 842212, upload-time = "2026-10-16T07:55:38.682Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/21/37b08d2c300df73ca7bee0654bf5745110993ac8676a53384b92718a254f/oep_client_python-0.0.37-py3-none-any.whl", hash = "sha256:59ad7f022c46d76c2fbc39685ebed1b192dea74b41e0b499f91dc62c2c14435f", size = 842970, upload-time = "2026-10-22T11:32:46.887Z" },
 ]
 
 [[package]]
@@ -171,7 +171,7 @@ wheels = [
 
 [[package]]
 name = "pytest-embedded-arduino-cli-ch32rv"
-version = "0.0.4"
+version = "0.0.5"
 source = { editable = "." }
 dependencies = [
     { name = "oep-client-python" },
@@ -182,7 +182,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "oep-client-python", specifier = ">=0.0.33" },
+    { name = "oep-client-python", specifier = ">=0.0.37" },
     { name = "pyserial", specifier = ">=3.5" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-embedded-arduino-cli", specifier = ">=1.8.0" },

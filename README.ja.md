@@ -16,7 +16,7 @@ pytest-embedded-arduino-cli は ch32rv で書き込み、ch32rv の monitor で�
 | `ch32_uart` | probe から見た DUT の UART。`ch32_uart.open(baud)` が `dut` と同じ `expect` / `expect_exact` / `write` を持つ口を返す |
 
 `ch32_uart` は、WCH-Link なら port の先の Link の UART bridge（CDC の serial port）を、OEP の probe なら、probe が持つラベルから
-口の `rx` / `tx` の線を引き（OEP host ガイド §5.3: `<口>.rx` / `<口>.tx`。例 `oep config label <probe> 22 v003.rx --save`）、そこへ
+口の `rx` / `tx` の線を引き（OEP host ガイド §5.3: `<口>.rx` / `<口>.tx`。例 `oep settings set <probe> core channel.GPIO22.label=v003.rx --save`）、そこへ
 plan した `oep.fixture.uart` を開く。口は試験の port `oep://<probe>/<口>` の `<口>` で、口を複数名付けた probe ではそれが要る。
 DUT のどの USART と route が probe につながっているかは試験の側が知っていることで、プラグインは知らない。
 
