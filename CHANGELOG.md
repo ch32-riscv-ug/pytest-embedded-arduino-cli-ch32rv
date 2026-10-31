@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+
+## 0.0.7
 - (EN) Follow ch32rv's new addresses and JSON contract 5: the broker is asked with the bare address (`--probe <address>`; the `port:` prefix is refused now), `ch32_uart` reads the port of `oep://<probe>[/<port>[/<target>]][?via=<route>]` with the query taken off first, and a WCH-Link is matched by its `probe list` address too (`wchlink://usb-<topology>`). The branches for older ch32rv output (rows without `kind`, `endpoint` outside `result`, `any`) are gone.
 - (JA) ch32rv の新しい住所と JSON の契約 5 に追従: ブローカーへは素の住所で聞く（`--probe <住所>`。`port:` の前置きは断られるようになった）。`ch32_uart` は `oep://<probe>[/<port>[/<target>]][?via=<経路>]` の口を、query を先に外してから読む。WCH-Link は `probe list` の address（`wchlink://usb-<topology>`）でも照合する。古い ch32rv の出力への分岐（`kind` の無い行、`result` の外の `endpoint`、`any`）は無くした。
 - (EN) The fixtures are the plugin's interface; every other module name is internal (`_` prefixed). `oep_host` offers `.host` and `.touch()`. The `ch32_uart` channel is pexpect underneath and shaped like the `dut`: `expect` / `expect_exact` take a pattern or a list and the Dut's `expect_all`, `not_matching`, `return_what_before_match`, default to 30 s and raise `pexpect.TIMEOUT`.
