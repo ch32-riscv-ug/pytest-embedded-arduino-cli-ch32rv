@@ -6,9 +6,10 @@ read through the platform's own monitor (ch32rv). This plugin adds what a CH32 b
 - `ch32rv`     the ch32rv the platform installed (runtime.tools.ch32rv.path), as a path.
 - `oep_host`   an oep-client-python Host on the OEP probe behind the test's port, through ch32rv's broker.
 - `ch32_uart`  the DUT's UART as the probe sees it, opened at a baud rate: a WCH-Link's UART bridge, or an OEP probe's
-               oep.fixture.uart. Same expect / expect_exact / write shape as `dut`.
+               oep.fixture.uart. Same expect / expect_exact / write shape as `dut` (pexpect underneath).
 
 It knows ch32rv and OEP, not the board: which DUT USART is wired to the probe is the test's (the bench's) business.
+The fixtures are the plugin's interface; every other name here is internal.
 """
 from __future__ import annotations
 
@@ -20,16 +21,19 @@ import sys
 import time
 from pathlib import Path
 
+import pexpect
+import pexpect.spawnbase
 import pytest
 
-LEASE_MS = 60000                 # oep-spec: probes accept 1000..60000 as asked
-KEEPALIVE_S = LEASE_MS / 3000.0  # refresh a third of the way in, on the next use
-BROKER_WAIT_S = 10.0             # for the dut's monitor to start the broker
+_LEASE_MS = 60000                  # oep-spec: probes accept 1000..60000 as asked
+_KEEPALIVE_S = _LEASE_MS / 3000.0  # refresh a third of the way in, on the next use
+_BROKER_WAIT_S = 10.0              # for the dut's monitor to start the broker
+_EXPECT_TIMEOUT_S = 30.0           # pytest-embedded's Dut default
 
 
 # ------------------------------------------------------------------ the test's port and the probe behind it
 
-def dut_address(config: pytest.Config) -> str:
+def _dut_address(config: pytest.Config) -> str:
     """The IDE-style port the test runs against: --port as resolved by pytest-embedded-arduino-cli, with the wrapper
     it adds for a platform monitor taken off through its own MonitorTarget (public API since 1.8.0; the URL's
     spelling is not a contract)."""
@@ -42,7 +46,7 @@ def dut_address(config: pytest.Config) -> str:
     return port
 
 
-def run_ch32rv(ch32rv: Path, *args: str, timeout: float = 30.0) -> dict:
+def _run_ch32rv(ch32rv: Path, *args: str, timeout: float = 30.0) -> dict:
     out = subprocess.run([str(ch32rv), *args], capture_output=True, text=True, timeout=timeout)
     try:
         return json.loads(out.stdout)
@@ -50,100 +54,123 @@ def run_ch32rv(ch32rv: Path, *args: str, timeout: float = 30.0) -> dict:
         raise RuntimeError(f"ch32rv {' '.join(args)} gave no JSON (exit {out.returncode}): {out.stderr.strip()}") from e
 
 
-def wch_link_uart(ch32rv: Path, address: str) -> str | None:
-    """The UART bridge (CDC serial port) of the WCH-Link behind `address`, or None when it is not a WCH-Link:
-    `wchlink://<serial>` names it by serial; a serial port path is a WCH-Link's own CDC when `probe list` says so.
-
-    Only the WCH-Link rows: from ch32rv 0.13.2 `probe list` also carries the OEP probes it enumerates over
-    USB (`kind: "oep"`, their CDC in `ports`), and an OEP probe's CDC is the OEP link, not a UART bridge.
-    A row without `kind` (ch32rv up to 0.13.1) is a WCH-Link."""
-    probes = [p for p in run_ch32rv(ch32rv, "probe", "list", "--json").get("result", {}).get("probes", [])
-              if p.get("kind", "wchlink") == "wchlink"]
-    if address.startswith("wchlink://"):
-        serial = address[len("wchlink://"):]
-        for p in probes:
-            if p.get("serial") == serial and p.get("ports"):
-                return p["ports"][0]
-        return None
-    want = os.path.realpath(address)
+def _wch_link_uart(ch32rv: Path, address: str) -> str | None:
+    """The UART bridge (CDC serial port) of the WCH-Link behind `address`, or None when it is not a WCH-Link: the
+    WCH-Link rows of `probe list` (an OEP probe's CDC there is the OEP link, not a UART bridge), matched by the
+    row's address (`wchlink://<serial>`, `wchlink://usb-<topology>`), its serial, or one of its serial ports."""
+    probes = [p for p in _run_ch32rv(ch32rv, "probe", "list", "--json")["result"]["probes"] if p["kind"] == "wchlink"]
+    want = None if "://" in address else os.path.realpath(address)
     for p in probes:
-        for port in p.get("ports", []):
-            if os.path.realpath(port) == want:
+        if not p["ports"]:
+            continue
+        if address == p.get("address") or address.lower() == f"wchlink://{p['serial']}".lower():
+            return p["ports"][0]
+        for port in p["ports"]:
+            if want is not None and os.path.realpath(port) == want:
                 return port
     return None
 
 
-def oep_port(address: str) -> str | None:
-    """The port of an `oep://<probe>/<port>[/<target>]` address (host guide §5.3), or None: no port in it, `any`,
-    or not an oep:// address."""
-    if not address.startswith("oep://"):
+def _oep_port(address: str) -> str | None:
+    """The port of an `oep://<probe>[/<port>[/<target>]][?via=<route>]` address (host guide §5.3), or None: no port
+    in it, or not an oep:// address. The query comes off first: a route (`tty:/dev/...`, `tcp:host:port`) has `/`."""
+    if not address.lower().startswith("oep://"):
         return None
-    parts = address[len("oep://"):].split("/")
-    return parts[1] if len(parts) > 1 and parts[1] and parts[1] != "any" else None
+    place = address[len("oep://"):].partition("?")[0]
+    parts = place.split("/")
+    return parts[1] if len(parts) > 1 and parts[1] else None
 
 
 # ------------------------------------------------------------------ one expect-able byte channel
 
-class Channel:
-    """A byte stream with the part of pytest-embedded's Dut interface a bench test uses: expect (regex),
-    expect_exact, write. `read` returns what arrived without waiting."""
+class _Stream(pexpect.spawnbase.SpawnBase):
+    """pexpect over a read callback that returns what arrived without waiting (b"" for nothing yet)."""
+
+    def __init__(self, read, timeout: float):
+        super().__init__(timeout=timeout)
+        self._read_now = read
+
+    def read_nonblocking(self, size: int = 1, timeout: float | None = -1) -> bytes:
+        if timeout == -1:
+            timeout = self.timeout
+        end = None if timeout is None else time.monotonic() + timeout
+        while True:
+            data = self._read_now()
+            if data:
+                self._log(data, "read")
+                return data
+            if end is not None and time.monotonic() >= end:
+                raise pexpect.TIMEOUT("Timeout exceeded.")
+            time.sleep(0.01)
+
+
+class _Channel:
+    """A byte stream shaped like pytest-embedded's Dut for what a bench test does with it: expect / expect_exact
+    (pexpect's, with the Dut's keywords expect_all, not_matching, return_what_before_match; the default timeout
+    30 s; pexpect.TIMEOUT when nothing matched) and write."""
 
     def __init__(self, read, write, name: str):
-        self._read, self._write, self.name = read, write, name
-        self.buffer = b""
-        self.log = bytearray()
-
-    def _fill(self) -> None:
-        data = self._read()
-        if data:
-            self.buffer += data
-            self.log += data
+        self._write, self.name = write, name
+        self._proc = _Stream(read, _EXPECT_TIMEOUT_S)
 
     def write(self, data: str | bytes) -> None:
         self._write(data.encode() if isinstance(data, str) else data)
 
-    def expect(self, pattern: str | bytes, timeout: float = 5.0) -> re.Match:
-        rx = re.compile(pattern.encode() if isinstance(pattern, str) else pattern)
-        end = time.monotonic() + timeout
-        while True:
-            m = rx.search(self.buffer)
-            if m:
-                self.buffer = self.buffer[m.end():]
-                return m
-            if time.monotonic() > end:
-                raise TimeoutError(f"{self.name}: {pattern!r} not seen in {timeout} s; last bytes: {bytes(self.buffer[-200:])!r}")
-            self._fill()
-            time.sleep(0.01)
+    def expect(self, pattern, **kwargs):
+        return self._expect(self._proc.expect, pattern, **kwargs)
 
-    def expect_exact(self, text: str | bytes, timeout: float = 5.0) -> bytes:
-        return self.expect(re.escape(text.encode() if isinstance(text, str) else text), timeout).group(0)
+    def expect_exact(self, pattern, **kwargs):
+        return self._expect(self._proc.expect_exact, pattern, **kwargs)
 
-    def read(self) -> bytes:
-        self._fill()
-        out, self.buffer = self.buffer, b""
-        return out
+    def _expect(self, func, pattern, *, expect_all: bool = False, not_matching=(),
+                return_what_before_match: bool = False, **kwargs):
+        """The Dut's expect wrapper (pytest_embedded.dut), on this channel's pexpect."""
+        if return_what_before_match and expect_all:
+            raise ValueError("`return_what_before_match` and `expect_all` cannot be `True` at the same time.")
+        patterns = list(pattern) if isinstance(pattern, (list, tuple)) else [pattern]
+        res = []
+        while patterns:
+            try:
+                index = func(patterns, **kwargs)
+            except (pexpect.EOF, pexpect.TIMEOUT) as e:
+                tail = bytes((self._proc.before or b"")[-200:])
+                raise e.__class__(f'{self.name}: not found "{pattern!s}"; last bytes: {tail!r}') from e
+            proc = self._proc
+            res.append(proc.before.rstrip() if proc.match in (pexpect.EOF, pexpect.TIMEOUT) else proc.match)
+            nms = not_matching if isinstance(not_matching, (list, tuple)) else [not_matching]
+            for nm in nms:
+                rx = re.compile(nm.encode() if isinstance(nm, str) else
+                                nm.pattern.encode() if isinstance(nm.pattern, str) else nm.pattern)
+                if rx.search(proc.before):
+                    raise ValueError(f"The pattern {rx} should not have been matched.")
+            if not expect_all:
+                break
+            patterns.pop(index)
+        if return_what_before_match:
+            return self._proc.before
+        return res[0] if len(res) == 1 else res
 
 
-class Ch32Uart:
+class _Ch32Uart:
     """The DUT's UART on the probe. `open(baud)` (again to change the rate) returns the Channel."""
 
     def __init__(self, request: pytest.FixtureRequest, ch32rv: Path):
         self._request, self._ch32rv = request, ch32rv
-        self.address = dut_address(request.config)
-        self.channel: Channel | None = None
+        self.address = _dut_address(request.config)
+        self.channel: _Channel | None = None
         self._close = None
 
-    def open(self, baud: int) -> Channel:
+    def open(self, baud: int) -> _Channel:
         self.close()
-        bridge = wch_link_uart(self._ch32rv, self.address)
+        bridge = _wch_link_uart(self._ch32rv, self.address)
         if bridge is not None:
             import serial
             s = serial.Serial(bridge, baud, timeout=0, exclusive=True)
-            self.channel = Channel(lambda: s.read(4096), s.write, f"uart {bridge} @{baud}")
+            self.channel = _Channel(lambda: s.read(4096), s.write, f"uart {bridge} @{baud}")
             self._close = s.close
         else:
             host = self._request.getfixturevalue("oep_host")
-            self.channel = host.fixture_uart(baud, name=f"uart {self.address} @{baud}", port=oep_port(self.address))
+            self.channel = host._fixture_uart(baud, name=f"uart {self.address} @{baud}", port=_oep_port(self.address))
             self._close = None
         return self.channel
 
@@ -155,33 +182,32 @@ class Ch32Uart:
 
 # ------------------------------------------------------------------ the OEP probe, through ch32rv's broker
 
-class OepHost:
-    """An oep-client-python Host in a session on the probe behind the test's port, through ch32rv's broker (the
-    one the dut's monitor started). `host` is the Host; `touch()` keeps the session's lease alive and runs on every
-    use through this object - a test that goes quiet for longer than the lease (60 s) loses its session."""
+class _OepHost:
+    """The `oep_host` fixture: an oep-client-python Host in a session on the probe behind the test's port, through
+    ch32rv's broker (the one the dut's monitor started). Its interface is `host` (the Host) and `touch()`, which keeps
+    the session's lease alive and runs on every use through `ch32_uart` - a test that goes quiet for longer than the
+    lease (60 s) loses its session."""
 
     def __init__(self, endpoint: str, owner: str):
         from oep_client import host as oh, link
-        self.link = link.SerialLink.on_stream(link.TcpStream(*_split(endpoint)), "length", 3.0)
-        self.host = oh.Host(self.link.send)
-        self.link.attach_host(self.host)
-        self.host.open(LEASE_MS, owner=owner)
+        self._link = link.SerialLink.on_stream(link.TcpStream(*_split(endpoint)), "length", 3.0)
+        self.host = oh.Host(self._link.send)
+        self._link.attach_host(self.host)
+        self.host.open(_LEASE_MS, owner=owner)
         self._last = time.monotonic()
 
     def touch(self) -> None:
-        if time.monotonic() - self._last > KEEPALIVE_S:
+        if time.monotonic() - self._last > _KEEPALIVE_S:
             self.host.keepalive()
         self._last = time.monotonic()
 
-    def fixture_uart(self, baud: int, name: str, port: str | None = None) -> Channel:
-        """The first oep.fixture.uart that takes `baud`, planned onto the port's rx / tx lines (host guide §5.3:
-        the labels `<port>.rx` / `<port>.tx` the probe's settings keep; with one port, `rx` / `tx` too, then the
-        firmware's). `port` is the port's name, the `<port>` of `oep://<probe>/<port>`; without it the probe may
-        name one port at most. The plan is the session's: it ends with the session."""
+    def _fixture_uart(self, baud: int, name: str, port: str | None = None) -> _Channel:
+        """The first oep.fixture.uart that takes `baud`, planned onto the port's rx / tx lines: the channels labelled
+        `<port>.rx` / `<port>.tx` (host guide §5.3; a label may add the target pin, `<port>.rx@pa10`). `port` is the
+        `<port>` of `oep://<probe>/<port>`; without it the probe must name one port. The plan is the session's."""
         from oep_client import core, fixture, host as oh, registry, settings
         RX, TX = (registry.FIXTURE_UART.enum["role"][r] for r in ("rx", "tx"))
-        # Every channel label (fixed / default / user) from the core's settings: the firmware's own are among them,
-        # so no separate firmware list is passed (oep-client-python 0.0.37, firmware 0.0.36).
+        # Every channel label (fixed / default / user), from the core's settings.
         labels = settings.labels(self.host)
         ports = settings.ports_named(labels)
         if port is None and len(ports) > 1:
@@ -217,19 +243,55 @@ class OepHost:
                 self.touch()
                 io.write(data)
 
-            return Channel(read, write, f"{name} (fn {fn}, rx {rx}, tx {tx})")
+            return _Channel(read, write, f"{name} (fn {fn}, rx {rx}, tx {tx})")
         raise RuntimeError(f"no oep.fixture.uart on this probe takes rx {rx} / tx {tx} at {baud} baud ({last})")
 
     def close(self) -> None:
         try:
             self.host.end()
         finally:
-            self.link.close()
+            self._link.close()
 
 
 def _split(endpoint: str) -> tuple[str, int]:
     host, _, port = endpoint.rpartition(":")
     return host or "127.0.0.1", int(port)
+
+
+# ------------------------------------------------------------------ the device lock
+
+def _device_identity(port: str) -> str | None:
+    """The device behind `port`, without opening it; lower case. An OEP probe: its unit_id, without the port, target
+    and route (host guide §5.3). A WCH-Link: its USB serial. A serial port path: the USB serial of the device it
+    belongs to, read from the OS's device list (sysfs; the port is not opened) - a WCH-Link's serial, or a USB OEP
+    probe's, which is its unit_id. ch32rv's broker serves a WCH-Link as an OEP probe whose unit_id is that serial,
+    so `/dev/ttyACM5`, `wchlink://<serial>` and `oep://<serial>?via=tcp:...` are one device. None when the address
+    says nothing more (a USB-UART without a serial, `wchlink://usb-<topology>`): the upstream rule keys it."""
+    from pytest_embedded_arduino_cli import MonitorTarget, is_monitor_url
+    if is_monitor_url(port):
+        port = MonitorTarget.from_url(port).address
+    low = port.lower()
+    if low.startswith("oep://"):
+        unit = low[len("oep://"):].partition("?")[0].split("/")[0]
+        return unit or None
+    if low.startswith("wchlink://"):
+        serial = low[len("wchlink://"):]
+        return serial if serial and not serial.startswith("usb-") else None
+    if "://" in port or not os.path.exists(port):
+        return None
+    from serial.tools import list_ports
+    want = os.path.realpath(port)
+    for info in list_ports.comports():
+        if os.path.realpath(info.device) == want:
+            return info.serial_number.lower() if info.serial_number else None
+    return None
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_arduino_cli_device_lock_key(config: pytest.Config, port: str) -> str | None:
+    """pytest-embedded-arduino-cli's device lock key: one key per probe, whichever of its ports or routes names it."""
+    identity = _device_identity(port)
+    return None if identity is None else f"ch32rv-probe:{identity}"
 
 
 # ------------------------------------------------------------------ fixtures
@@ -250,20 +312,19 @@ def ch32rv(arduino_cli_build_properties) -> Path:
 def oep_host(request: pytest.FixtureRequest, ch32rv: Path, dut):
     """A session on the OEP probe behind the test's port, through the broker the dut's monitor runs. Fails (does
     not skip) when the port is not an OEP probe: a test that asks for it needs one."""
-    address = dut_address(request.config)
+    address = _dut_address(request.config)
     # The broker is the one the dut's monitor starts, and `arduino-cli monitor` takes about a second to open
     # its session; a test that asks for oep_host first thing would otherwise find no broker yet.
-    deadline = time.monotonic() + BROKER_WAIT_S
+    deadline = time.monotonic() + _BROKER_WAIT_S
     while True:
-        info = run_ch32rv(ch32rv, "broker", "endpoint", "--probe", f"port:{address}", "--json")
-        endpoint = info.get("endpoint") or info.get("result", {}).get("endpoint")
+        endpoint = _run_ch32rv(ch32rv, "broker", "endpoint", "--probe", address, "--json")["result"]["endpoint"]
         if endpoint or time.monotonic() >= deadline:
             break
         time.sleep(0.2)
     if not endpoint:
-        raise RuntimeError(f"no ch32rv broker for {address} after {BROKER_WAIT_S:g} s: is it an OEP probe, and "
+        raise RuntimeError(f"no ch32rv broker for {address} after {_BROKER_WAIT_S:g} s: is it an OEP probe, and "
                            f"did the dut's monitor open?")
-    h = OepHost(endpoint, owner=f"pytest {request.node.nodeid}"[:32])
+    h = _OepHost(endpoint, owner=f"pytest {request.node.nodeid}"[:32])
     try:
         yield h
     finally:
@@ -274,7 +335,7 @@ def oep_host(request: pytest.FixtureRequest, ch32rv: Path, dut):
 def ch32_uart(request: pytest.FixtureRequest, ch32rv: Path, dut):
     """The DUT's UART as the probe sees it; `ch32_uart.open(baud)` returns an expect-able Channel. Which DUT USART
     and route are wired to the probe is the test's to tell the sketch."""
-    u = Ch32Uart(request, ch32rv)
+    u = _Ch32Uart(request, ch32rv)
     try:
         yield u
     finally:
