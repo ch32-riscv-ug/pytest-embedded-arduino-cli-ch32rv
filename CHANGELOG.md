@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+- (EN) Require oep-client-python 0.0.41, the release with the `oep://<probe>[/<port>[/<target>]][?via=<route>]` addresses.
+- (JA) oep-client-python 0.0.41（`oep://<probe>[/<port>[/<target>]][?via=<経路>]` の住所が入った版）を下限に。
 
 ## 0.0.7
 - (EN) Follow ch32rv's new addresses and JSON contract 5: the broker is asked with the bare address (`--probe <address>`; the `port:` prefix is refused now), `ch32_uart` reads the port of `oep://<probe>[/<port>[/<target>]][?via=<route>]` with the query taken off first, and a WCH-Link is matched by its `probe list` address too (`wchlink://usb-<topology>`). The branches for older ch32rv output (rows without `kind`, `endpoint` outside `result`, `any`) are gone.
