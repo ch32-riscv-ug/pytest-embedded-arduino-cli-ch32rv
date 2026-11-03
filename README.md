@@ -30,7 +30,8 @@ pytest-embedded-arduino-cli's device lock takes one key per probe (`ch32rv-probe
 the port names it by `oep://`, `wchlink://<serial>` or its serial port. A probe behind a USB-UART with no serial (an
 ESP32 on a CH340) cannot be matched to its `oep://` address: name it the same way in every run.
 
-`oep_host` waits up to 10 s for the broker the dut's monitor starts. The OEP session holds a 60 s lease, refreshed
+`oep_host` waits up to 10 s for the broker the dut's monitor starts. Its session shares the lock of ch32rv's own tools (the
+monitor, flash, gdb) through ch32rv's `io.github.ch32-riscv-ug.share` open extension. The OEP session holds a 60 s lease, refreshed
 whenever the test uses it; a test that stays quiet for longer loses it.
 
 ```sh

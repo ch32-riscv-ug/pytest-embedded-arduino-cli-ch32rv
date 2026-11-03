@@ -143,3 +143,48 @@ def test_the_fixtures_are_registered(pytester):
     out = result.stdout.str()
     for name in ("ch32rv", "oep_host", "ch32_uart"):
         assert name in out
+
+
+@pytest.mark.parametrize("knows_share, opens", [
+    (True, [["io.github.ch32-riscv-ug.share"]]),
+    (False, [["io.github.ch32-riscv-ug.share"], []]),
+])
+def test_oep_host_asks_the_broker_to_share_its_lock(monkeypatch, knows_share, opens):
+    """ch32rv's broker shares the lock of its tools with an open that carries its named extension; an endpoint that
+    does not know it refuses unsupported 0xFF, and the open goes again without it."""
+    from oep_client import host as oh, link
+    seen = []
+
+    class FakeHost:
+        def __init__(self, send):
+            pass
+
+        def open(self, lease_ms, *, owner=None, extensions=()):
+            seen.append(list(extensions))
+            if extensions and not knows_share:
+                raise oh.Unsupported(types.SimpleNamespace(payload=b"\xff", describe=lambda: "unsupported 0xff"))
+
+    fake_link = types.SimpleNamespace(send=None, attach_host=lambda h: None, close=lambda: None)
+    monkeypatch.setattr(link, "TcpStream", lambda host, port: None)
+    monkeypatch.setattr(link.SerialLink, "on_stream", staticmethod(lambda *a, **kw: fake_link))
+    monkeypatch.setattr(oh, "Host", FakeHost)
+    plugin._OepHost("127.0.0.1:1", "pytest t")
+    assert seen == opens
+
+
+def test_oep_host_passes_other_refusals_on(monkeypatch):
+    from oep_client import host as oh, link
+
+    class FakeHost:
+        def __init__(self, send):
+            pass
+
+        def open(self, lease_ms, *, owner=None, extensions=()):
+            raise oh.Unsupported(types.SimpleNamespace(payload=b"\x01", describe=lambda: "unsupported 0x01"))
+
+    fake_link = types.SimpleNamespace(send=None, attach_host=lambda h: None, close=lambda: None)
+    monkeypatch.setattr(link, "TcpStream", lambda host, port: None)
+    monkeypatch.setattr(link.SerialLink, "on_stream", staticmethod(lambda *a, **kw: fake_link))
+    monkeypatch.setattr(oh, "Host", FakeHost)
+    with pytest.raises(oh.Unsupported):
+        plugin._OepHost("127.0.0.1:1", "pytest t")

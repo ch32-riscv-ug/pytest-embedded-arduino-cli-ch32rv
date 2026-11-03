@@ -29,6 +29,7 @@ _LEASE_MS = 60000                  # oep-spec: probes accept 1000..60000 as aske
 _KEEPALIVE_S = _LEASE_MS / 3000.0  # refresh a third of the way in, on the next use
 _BROKER_WAIT_S = 10.0              # for the dut's monitor to start the broker
 _EXPECT_TIMEOUT_S = 30.0           # pytest-embedded's Dut default
+_SHARE = "io.github.ch32-riscv-ug.share"  # ch32rv's broker: share the lock its monitor / flash / gdb hold
 
 
 # ------------------------------------------------------------------ the test's port and the probe behind it
@@ -184,16 +185,23 @@ class _Ch32Uart:
 
 class _OepHost:
     """The `oep_host` fixture: an oep-client-python Host in a session on the probe behind the test's port, through
-    ch32rv's broker (the one the dut's monitor started). Its interface is `host` (the Host) and `touch()`, which keeps
-    the session's lease alive and runs on every use through `ch32_uart` - a test that goes quiet for longer than the
-    lease (60 s) loses its session."""
+    ch32rv's broker (the one the dut's monitor started). The open asks the broker to share the lock its own tools
+    hold (ch32rv's named extension io.github.ch32-riscv-ug.share), so the session runs beside the dut's monitor; an
+    endpoint that does not know the extension gets a plain open. Its interface is `host` (the Host) and `touch()`,
+    which keeps the session's lease alive and runs on every use through `ch32_uart` - a test that goes quiet for
+    longer than the lease (60 s) loses its session."""
 
     def __init__(self, endpoint: str, owner: str):
-        from oep_client import host as oh, link
+        from oep_client import host as oh, link, message as m
         self._link = link.SerialLink.on_stream(link.TcpStream(*_split(endpoint)), "length", 3.0)
         self.host = oh.Host(self._link.send)
         self._link.attach_host(self.host)
-        self.host.open(_LEASE_MS, owner=owner)
+        try:
+            self.host.open(_LEASE_MS, owner=owner, extensions=[_SHARE])
+        except oh.Unsupported as e:
+            if e.tag != m.TAG_NAMED_EXTENSION | m.TAG_CRITICAL:
+                raise
+            self.host.open(_LEASE_MS, owner=owner)  # not ch32rv's broker: a session of its own
         self._last = time.monotonic()
 
     def touch(self) -> None:

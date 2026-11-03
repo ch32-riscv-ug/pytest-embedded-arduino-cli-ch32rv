@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+- (EN) `oep_host` opens with ch32rv's named extension `io.github.ch32-riscv-ug.share`, so ch32rv's broker lets the session share the lock its monitor, flash and gdb hold (the dut's monitor runs beside the test); an endpoint that does not know the extension refuses it (unsupported 0xFF) and the open goes again without it. Needs ch32rv 2cea5d4 or later for the sharing; with an older broker the plain open is used. Requires oep-client-python 0.0.43 (`Host.open(extensions=...)`).
+- (JA) `oep_host` は ch32rv の名前つき拡張 `io.github.ch32-riscv-ug.share` を付けて open する。ch32rv のブローカーは、その session を monitor・flash・gdb が持つロックに相乗りさせる（dut の monitor と並んで動く）。拡張を知らない相手は断る（unsupported 0xFF）ので、拡張なしで open し直す。相乗りには ch32rv 2cea5d4 以降が要り、それより前のブローカーでは拡張なしの open になる。oep-client-python 0.0.43（`Host.open(extensions=...)`）を下限に。
 - (EN) Require oep-client-python 0.0.41, the release with the `oep://<probe>[/<port>[/<target>]][?via=<route>]` addresses.
 - (JA) oep-client-python 0.0.41（`oep://<probe>[/<port>[/<target>]][?via=<経路>]` の住所が入った版）を下限に。
 
