@@ -31,19 +31,6 @@ def test_dut_address_takes_the_monitor_wrapper_off(port, address):
     assert plugin._dut_address(config_with_port(port)) == address
 
 
-@pytest.mark.parametrize("address, port", [
-    ("oep://30eda0e31108-hs/x035", "x035"),
-    ("oep://30eda0e31108-hs/x035/ch32x035-0123456789abcdef", "x035"),
-    ("oep://30eda0e31108-hs", None),
-    ("oep://30eda0e31108-hs?via=tty:/dev/serial/by-id/usb-x-if00", None),
-    ("oep://30eda0e31108-hs/x035?via=tty:/dev/ttyACM0", "x035"),
-    ("oep://38ef8f06bdc2/v003?via=tcp:127.0.0.1:4242", "v003"),
-    ("/dev/ttyACM3", None),
-])
-def test_oep_port_is_the_port_of_an_oep_address(address, port):
-    assert plugin._oep_port(address) == port
-
-
 def test_dut_address_without_a_port_is_a_usage_error():
     with pytest.raises(pytest.UsageError):
         plugin._dut_address(config_with_port(None))
@@ -110,81 +97,55 @@ def test_wch_link_uart_maps_the_port_to_the_links_bridge(monkeypatch, address, b
 
 
 @pytest.mark.parametrize("port, key", [
-    ("oep://30EDA0E31108-hs/x035", "ch32rv-probe:30eda0e31108-hs"),
-    ("oep://30eda0e31108-hs/l103/ch32l103-0123456789abcdef?via=usb", "ch32rv-probe:30eda0e31108-hs"),
-    ("oep://30eda0e31108-hs?via=tty:/dev/ttyACM0", "ch32rv-probe:30eda0e31108-hs"),
-    ("wchlink://38EF8F06BDC2", "ch32rv-probe:38ef8f06bdc2"),
-    ("oep://38ef8f06bdc2?via=tcp:127.0.0.1:4242", "ch32rv-probe:38ef8f06bdc2"),
-    (wrapped("oep://30eda0e31108-hs/x035", "oep", "ch32x035"), "ch32rv-probe:30eda0e31108-hs"),
+    ("wchlink://38EF8F06BDC2", "probe:38ef8f06bdc2"),
+    (wrapped("wchlink://38EF8F06BDC2", "wchlink", "ch32v203"), "probe:38ef8f06bdc2"),
     ("wchlink://usb-3-1.2", None),
+    ("oep://30eda0e31108-hs/x035", None),
+    ("oep://38ef8f06bdc2?via=tcp:127.0.0.1:4242", None),
     ("socket://localhost:5555", None),
 ])
-def test_the_device_lock_key_is_the_probe(port, key):
+def test_the_device_lock_name_is_the_wch_links(port, key):
     assert plugin.pytest_arduino_cli_device_lock_key(None, port) == key
 
 
-def test_the_device_lock_key_of_a_serial_port_is_its_usb_serial(monkeypatch, tmp_path):
-    """A tty names the same device as its probe's address: the USB serial from the OS's list, the port not opened."""
+def test_the_device_lock_name_of_a_wch_links_serial_port_is_its_unit_id(monkeypatch, tmp_path):
+    """A WCH-Link's tty takes the Link's lock (its USB serial from the OS's list, the port not opened); any other
+    USB serial port is not this plugin's (a USB OEP probe's is oep-client-python's)."""
     from serial.tools import list_ports
-    link, bridge, alias = tmp_path / "ttyACM5", tmp_path / "ttyUSB0", tmp_path / "by-id-link"
-    link.touch(), bridge.touch(), alias.symlink_to(link)
-    ports = [types.SimpleNamespace(device=str(link), serial_number="38EF8F06BDC2"),
-             types.SimpleNamespace(device=str(bridge), serial_number=None)]
+    link, oep, bridge, alias = (tmp_path / n for n in ("ttyACM5", "ttyACM6", "ttyUSB0", "by-id-link"))
+    link.touch(), oep.touch(), bridge.touch(), alias.symlink_to(link)
+    ports = [types.SimpleNamespace(device=str(link), vid=0x1A86, pid=0x8010, serial_number="38EF8F06BDC2"),
+             types.SimpleNamespace(device=str(oep), vid=0x1209, pid=0x4F45, serial_number="30eda0e31108"),
+             types.SimpleNamespace(device=str(bridge), vid=0x1A86, pid=0x7523, serial_number=None)]
     monkeypatch.setattr(list_ports, "comports", lambda: ports)
     key = plugin.pytest_arduino_cli_device_lock_key
     assert key(None, str(link)) == key(None, str(alias)) == key(None, "wchlink://38EF8F06BDC2") \
-        == key(None, "oep://38ef8f06bdc2?via=tcp:127.0.0.1:4242") == "ch32rv-probe:38ef8f06bdc2"
+        == "probe:38ef8f06bdc2"
+    assert key(None, str(oep)) is None
     assert key(None, str(bridge)) is None
     assert key(None, str(tmp_path / "gone")) is None
+
+
+def test_the_unit_id_is_ch32rvs():
+    """ch32rv's wch_unit_id: lower case, other than ASCII letters and digits as `-`, at most 32."""
+    assert plugin._unit_id("38EF8F06BDC2") == "38ef8f06bdc2"
+    assert plugin._unit_id("AB_cd.12") == "ab-cd-12"
+    assert plugin._unit_id("X" * 40) == "x" * 32
+
+
+def test_ch32_uart_on_an_oep_port_points_to_oep_uart(monkeypatch):
+    monkeypatch.setattr(plugin, "_run_ch32rv", lambda ch32rv, *args, **kw: PROBES)
+    request = types.SimpleNamespace(config=config_with_port("oep://30eda0ea068b/v003"))
+    with pytest.raises(RuntimeError, match="oep_uart"):
+        plugin._Ch32Uart(request, "ch32rv").open(115200)
+    request = types.SimpleNamespace(config=config_with_port("/dev/ttyUSB0"))
+    with pytest.raises(RuntimeError, match="no WCH-Link"):
+        plugin._Ch32Uart(request, "ch32rv").open(115200)
 
 
 def test_the_fixtures_are_registered(pytester):
     result = pytester.runpytest("--fixtures")
     out = result.stdout.str()
-    for name in ("ch32rv", "oep_host", "ch32_uart"):
+    for name in ("ch32rv", "ch32_uart"):
         assert name in out
-
-
-@pytest.mark.parametrize("knows_share, opens", [
-    (True, [["oep.probe.share"]]),
-    (False, [["oep.probe.share"], []]),
-])
-def test_oep_host_asks_the_broker_to_share_its_lock(monkeypatch, knows_share, opens):
-    """A broker shares the lock of its tools with an open that carries oep.probe.share (host guide §7.1); an endpoint that
-    does not know it refuses unsupported 0xFF, and the open goes again without it."""
-    from oep_client import host as oh, link
-    seen = []
-
-    class FakeHost:
-        def __init__(self, send):
-            pass
-
-        def open(self, lease_ms, *, owner=None, extensions=()):
-            seen.append(list(extensions))
-            if extensions and not knows_share:
-                raise oh.Unsupported(types.SimpleNamespace(payload=b"\xff", describe=lambda: "unsupported 0xff"))
-
-    fake_link = types.SimpleNamespace(send=None, attach_host=lambda h: None, close=lambda: None)
-    monkeypatch.setattr(link, "TcpStream", lambda host, port: None)
-    monkeypatch.setattr(link.SerialLink, "on_stream", staticmethod(lambda *a, **kw: fake_link))
-    monkeypatch.setattr(oh, "Host", FakeHost)
-    plugin._OepHost("127.0.0.1:1", "pytest t")
-    assert seen == opens
-
-
-def test_oep_host_passes_other_refusals_on(monkeypatch):
-    from oep_client import host as oh, link
-
-    class FakeHost:
-        def __init__(self, send):
-            pass
-
-        def open(self, lease_ms, *, owner=None, extensions=()):
-            raise oh.Unsupported(types.SimpleNamespace(payload=b"\x01", describe=lambda: "unsupported 0x01"))
-
-    fake_link = types.SimpleNamespace(send=None, attach_host=lambda h: None, close=lambda: None)
-    monkeypatch.setattr(link, "TcpStream", lambda host, port: None)
-    monkeypatch.setattr(link.SerialLink, "on_stream", staticmethod(lambda *a, **kw: fake_link))
-    monkeypatch.setattr(oh, "Host", FakeHost)
-    with pytest.raises(oh.Unsupported):
-        plugin._OepHost("127.0.0.1:1", "pytest t")
+    assert "oep_host" not in out or "oep_client" in out  # oep_host is oep-client-python's, if that is installed

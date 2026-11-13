@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "pytest-embedded-arduino-cli-ch32rv"
 version = "0.0.9"
-description = "pytest-embedded-arduino-cli plugin for CH32 boards flashed by ch32rv: the ch32rv path, the OEP probe host, and the DUT's UART on the probe"
+description = "pytest-embedded-arduino-cli plugin for CH32 boards flashed by ch32rv: the ch32rv path, the DUT's UART through a WCH-Link, and the WCH-Link's device lock"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -21,7 +21,6 @@ classifiers = [
 dependencies = [
   "pytest>=8",
   "pytest-embedded-arduino-cli>=1.12.0",
-  "oep-client-python>=0.0.54",
   "pyserial>=3.5",
   "pexpect>=4.8",
 ]

@@ -4,12 +4,13 @@ pytest-embedded-arduino-cli already uploads (ch32rv, through the platform's uplo
 read through the platform's own monitor (ch32rv). This plugin adds what a CH32 bench test needs on top:
 
 - `ch32rv`     the ch32rv the platform installed (runtime.tools.ch32rv.path), as a path.
-- `oep_host`   an oep-client-python Host on the OEP probe behind the test's port, through ch32rv's broker.
-- `ch32_uart`  the DUT's UART as the probe sees it, opened at a baud rate: a WCH-Link's UART bridge, or an OEP probe's
-               oep.fixture.uart. Same expect / expect_exact / write shape as `dut` (pexpect underneath).
+- `ch32_uart`  the DUT's UART through the WCH-Link behind the test's port (its UART bridge), opened at a baud rate.
+               Same expect / expect_exact / write shape as `dut` (pexpect underneath).
 
-It knows ch32rv and OEP, not the board: which DUT USART is wired to the probe is the test's (the bench's) business.
-The fixtures are the plugin's interface; every other name here is internal.
+and the device lock's name for a WCH-Link. OEP probes are oep-client-python's (its pytest plugin: `oep_host`,
+`oep_uart`, the lock of `oep://` and of a USB OEP probe's serial port). It knows ch32rv and the WCH-Link, not the
+board: which DUT USART is wired to the Link is the test's (the bench's) business. The fixtures and the hook are the
+plugin's interface; every other name here is internal.
 """
 from __future__ import annotations
 
@@ -25,11 +26,8 @@ import pexpect
 import pexpect.spawnbase
 import pytest
 
-_LEASE_MS = 60000                  # oep-spec: probes accept 1000..60000 as asked
-_KEEPALIVE_S = _LEASE_MS / 3000.0  # refresh a third of the way in, on the next use
-_BROKER_WAIT_S = 10.0              # for the dut's monitor to start the broker
-_EXPECT_TIMEOUT_S = 30.0           # pytest-embedded's Dut default
-_SHARE = "oep.probe.share"  # host guide §7.1: a broker shares the lock its tools (monitor / flash / gdb) hold
+_EXPECT_TIMEOUT_S = 30.0  # pytest-embedded's Dut default
+_WCH_LINK_USB = {(0x1A86, 0x8010), (0x1A86, 0x8011), (0x1A86, 0x8012)}  # ch32rv's wchlink: RISC-V, RISC-V 2, DAP
 
 
 # ------------------------------------------------------------------ the test's port and the probe behind it
@@ -70,16 +68,6 @@ def _wch_link_uart(ch32rv: Path, address: str) -> str | None:
             if want is not None and os.path.realpath(port) == want:
                 return port
     return None
-
-
-def _oep_port(address: str) -> str | None:
-    """The port of an `oep://<probe>[/<port>[/<target>]][?via=<route>]` address (host guide §5.3), or None: no port
-    in it, or not an oep:// address. The query comes off first: a route (`tty:/dev/...`, `tcp:host:port`) has `/`."""
-    if not address.lower().startswith("oep://"):
-        return None
-    place = address[len("oep://"):].partition("?")[0]
-    parts = place.split("/")
-    return parts[1] if len(parts) > 1 and parts[1] else None
 
 
 # ------------------------------------------------------------------ one expect-able byte channel
@@ -153,7 +141,7 @@ class _Channel:
 
 
 class _Ch32Uart:
-    """The DUT's UART on the probe. `open(baud)` (again to change the rate) returns the Channel."""
+    """The DUT's UART through the WCH-Link. `open(baud)` (again to change the rate) returns the Channel."""
 
     def __init__(self, request: pytest.FixtureRequest, ch32rv: Path):
         self._request, self._ch32rv = request, ch32rv
@@ -163,16 +151,16 @@ class _Ch32Uart:
 
     def open(self, baud: int) -> _Channel:
         self.close()
+        if self.address.lower().startswith("oep://"):
+            raise RuntimeError(f"{self.address} is an OEP probe: its UART is oep-client-python's `oep_uart` fixture")
         bridge = _wch_link_uart(self._ch32rv, self.address)
-        if bridge is not None:
-            import serial
-            s = serial.Serial(bridge, baud, timeout=0, exclusive=True)
-            self.channel = _Channel(lambda: s.read(4096), s.write, f"uart {bridge} @{baud}")
-            self._close = s.close
-        else:
-            host = self._request.getfixturevalue("oep_host")
-            self.channel = host._fixture_uart(baud, name=f"uart {self.address} @{baud}", port=_oep_port(self.address))
-            self._close = None
+        if bridge is None:
+            raise RuntimeError(f"no WCH-Link behind {self.address} in `ch32rv probe list` (an OEP probe's UART is "
+                               f"oep-client-python's `oep_uart` fixture)")
+        import serial
+        s = serial.Serial(bridge, baud, timeout=0, exclusive=True)
+        self.channel = _Channel(lambda: s.read(4096), s.write, f"uart {bridge} @{baud}")
+        self._close = s.close
         return self.channel
 
     def close(self) -> None:
@@ -181,125 +169,41 @@ class _Ch32Uart:
         self._close, self.channel = None, None
 
 
-# ------------------------------------------------------------------ the OEP probe, through ch32rv's broker
-
-class _OepHost:
-    """The `oep_host` fixture: an oep-client-python Host in a session on the probe behind the test's port, through
-    ch32rv's broker (the one the dut's monitor started). The open asks the broker to share the lock its own tools
-    hold (host guide §7.1's named extension oep.probe.share), so the session runs beside the dut's monitor; an
-    endpoint that does not know the extension gets a plain open. Its interface is `host` (the Host) and `touch()`,
-    which keeps the session's lease alive and runs on every use through `ch32_uart` - a test that goes quiet for
-    longer than the lease (60 s) loses its session."""
-
-    def __init__(self, endpoint: str, owner: str):
-        from oep_client import host as oh, link, message as m
-        self._link = link.SerialLink.on_stream(link.TcpStream(*_split(endpoint)), "length", 3.0)
-        self.host = oh.Host(self._link.send)
-        self._link.attach_host(self.host)
-        try:
-            self.host.open(_LEASE_MS, owner=owner, extensions=[_SHARE])
-        except oh.Unsupported as e:
-            if e.tag != m.TAG_NAMED_EXTENSION | m.TAG_CRITICAL:
-                raise
-            self.host.open(_LEASE_MS, owner=owner)  # not ch32rv's broker: a session of its own
-        self._last = time.monotonic()
-
-    def touch(self) -> None:
-        if time.monotonic() - self._last > _KEEPALIVE_S:
-            self.host.keepalive()
-        self._last = time.monotonic()
-
-    def _fixture_uart(self, baud: int, name: str, port: str | None = None) -> _Channel:
-        """The first oep.fixture.uart that takes `baud`, planned onto the port's rx / tx lines: the channels labelled
-        `<port>.rx` / `<port>.tx` (host guide §5.3; a label may add the target pin, `<port>.rx@pa10`). `port` is the
-        `<port>` of `oep://<probe>/<port>`; without it the probe must name one port. The plan is the session's."""
-        from oep_client import core, fixture, host as oh, registry, settings
-        RX, TX = (registry.FIXTURE_UART.enum["role"][r] for r in ("rx", "tx"))
-        # Every channel label (fixed / default / user), from the core's settings.
-        labels = settings.labels(self.host)
-        ports = settings.ports_named(labels)
-        if port is None and len(ports) > 1:
-            raise RuntimeError(f"the probe names ports {', '.join(ports)}: give the test's port as "
-                               f"oep://<probe>/<port> to say which one the DUT's UART is on")
-        port_name = port if port is not None else (ports[0] if ports else None)
-        rx, tx = (settings.line_from_labels(labels, line, port_name) for line in ("rx", "tx"))
-        if rx is None or tx is None:
-            where = f"{port_name}." if port_name else ""
-            raise RuntimeError(f"no single {where}rx / {where}tx line in the probe's labels (rx {rx}, tx {tx}; "
-                               f"ports: {', '.join(ports) or 'none'}): label them, oep settings set <probe> core "
-                               f"channel.<GPIO>.label={where}rx channel.<GPIO>.label={where}tx --save")
-        last = None
-        for fn in core.find_all(self.host, "oep.fixture.uart"):
-            io = fixture.FixtureUartIO(self.host, fn)
-            try:
-                core.plan_apply(self.host, [(fn, RX, rx), (fn, TX, tx)])
-            except oh.Rejected as e:
-                last = e
-                continue
-            try:
-                io.configure(baud)
-            except oh.Rejected as e:          # free the pins for the next instance
-                last = e
-                core.plan_release(self.host, [fn])
-                continue
-
-            def read(io=io):
-                self.touch()
-                return io.read(480)
-
-            def write(data: bytes, io=io):
-                self.touch()
-                io.write(data)
-
-            return _Channel(read, write, f"{name} (fn {fn}, rx {rx}, tx {tx})")
-        raise RuntimeError(f"no oep.fixture.uart on this probe takes rx {rx} / tx {tx} at {baud} baud ({last})")
-
-    def close(self) -> None:
-        try:
-            self.host.end()
-        finally:
-            self._link.close()
-
-
-def _split(endpoint: str) -> tuple[str, int]:
-    host, _, port = endpoint.rpartition(":")
-    return host or "127.0.0.1", int(port)
-
-
 # ------------------------------------------------------------------ the device lock
 
-def _device_identity(port: str) -> str | None:
-    """The device behind `port`, without opening it; lower case. An OEP probe: its unit_id, without the port, target
-    and route (host guide §5.3). A WCH-Link: its USB serial. A serial port path: the USB serial of the device it
-    belongs to, read from the OS's device list (sysfs; the port is not opened) - a WCH-Link's serial, or a USB OEP
-    probe's, which is its unit_id. ch32rv's broker serves a WCH-Link as an OEP probe whose unit_id is that serial,
-    so `/dev/ttyACM5`, `wchlink://<serial>` and `oep://<serial>?via=tcp:...` are one device. None when the address
-    says nothing more (a USB-UART without a serial, `wchlink://usb-<topology>`): the upstream rule keys it."""
+def _unit_id(serial: str) -> str:
+    """A WCH-Link's unit_id the way ch32rv's broker gives it (wch_unit_id): lower case, a character other than ASCII
+    letters and digits as `-`, at most 32 - the `<id>` of the OEP family's lock name `probe:<id>`."""
+    return "".join(c if c.isascii() and c.isalnum() else "-" for c in serial.lower())[:32]
+
+
+def _wch_link_serial(port: str) -> str | None:
+    """The serial of the WCH-Link behind `port` without opening anything: `wchlink://<serial>`, or a serial port of a
+    WCH-Link (USB 1a86:8010 / 8011 / 8012), read from the OS's device list. None otherwise - `wchlink://usb-<topology>`
+    (no serial in it), an `oep://` address or a USB OEP probe's port (oep-client-python's), any other port."""
     from pytest_embedded_arduino_cli import MonitorTarget, is_monitor_url
     if is_monitor_url(port):
         port = MonitorTarget.from_url(port).address
-    low = port.lower()
-    if low.startswith("oep://"):
-        unit = low[len("oep://"):].partition("?")[0].split("/")[0]
-        return unit or None
-    if low.startswith("wchlink://"):
-        serial = low[len("wchlink://"):]
-        return serial if serial and not serial.startswith("usb-") else None
+    if port.lower().startswith("wchlink://"):
+        serial = port[len("wchlink://"):]
+        return serial if serial and not serial.lower().startswith("usb-") else None
     if "://" in port or not os.path.exists(port):
         return None
     from serial.tools import list_ports
     want = os.path.realpath(port)
     for info in list_ports.comports():
         if os.path.realpath(info.device) == want:
-            return info.serial_number.lower() if info.serial_number else None
+            return info.serial_number if (info.vid, info.pid) in _WCH_LINK_USB and info.serial_number else None
     return None
 
 
 @pytest.hookimpl(optionalhook=True)
 def pytest_arduino_cli_device_lock_key(config: pytest.Config, port: str) -> str | None:
-    """pytest-embedded-arduino-cli's device lock key: one key per probe, whichever of its ports or routes names it."""
-    identity = _device_identity(port)
-    return None if identity is None else f"ch32rv-probe:{identity}"
+    """pytest-embedded-arduino-cli's device lock name for a WCH-Link: `probe:<unit_id>`, the OEP family's name, as
+    ch32rv's broker serves the Link as an OEP probe with that unit_id - `wchlink://<serial>`, the Link's serial port
+    and `oep://<unit_id>?via=...` (oep-client-python's) take one lock. None for anything else."""
+    serial = _wch_link_serial(port)
+    return None if serial is None else f"probe:{_unit_id(serial)}"
 
 
 # ------------------------------------------------------------------ fixtures
@@ -317,32 +221,9 @@ def ch32rv(arduino_cli_build_properties) -> Path:
 
 
 @pytest.fixture
-def oep_host(request: pytest.FixtureRequest, ch32rv: Path, dut):
-    """A session on the OEP probe behind the test's port, through the broker the dut's monitor runs. Fails (does
-    not skip) when the port is not an OEP probe: a test that asks for it needs one."""
-    address = _dut_address(request.config)
-    # The broker is the one the dut's monitor starts, and `arduino-cli monitor` takes about a second to open
-    # its session; a test that asks for oep_host first thing would otherwise find no broker yet.
-    deadline = time.monotonic() + _BROKER_WAIT_S
-    while True:
-        endpoint = _run_ch32rv(ch32rv, "broker", "endpoint", "--probe", address, "--json")["result"]["endpoint"]
-        if endpoint or time.monotonic() >= deadline:
-            break
-        time.sleep(0.2)
-    if not endpoint:
-        raise RuntimeError(f"no ch32rv broker for {address} after {_BROKER_WAIT_S:g} s: is it an OEP probe, and "
-                           f"did the dut's monitor open?")
-    h = _OepHost(endpoint, owner=f"pytest {request.node.nodeid}"[:32])
-    try:
-        yield h
-    finally:
-        h.close()
-
-
-@pytest.fixture
 def ch32_uart(request: pytest.FixtureRequest, ch32rv: Path, dut):
-    """The DUT's UART as the probe sees it; `ch32_uart.open(baud)` returns an expect-able Channel. Which DUT USART
-    and route are wired to the probe is the test's to tell the sketch."""
+    """The DUT's UART through the WCH-Link behind the test's port; `ch32_uart.open(baud)` returns an expect-able
+    Channel. Which DUT USART and route are wired to the Link is the test's to tell the sketch."""
     u = _Ch32Uart(request, ch32rv)
     try:
         yield u
