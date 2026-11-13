@@ -221,10 +221,10 @@ class _OepHost:
         if port is None and len(ports) > 1:
             raise RuntimeError(f"the probe names ports {', '.join(ports)}: give the test's port as "
                                f"oep://<probe>/<port> to say which one the DUT's UART is on")
-        profile = port if port is not None else (ports[0] if ports else None)
-        rx, tx = (settings.line_from_labels(labels, line, profile) for line in ("rx", "tx"))
+        port_name = port if port is not None else (ports[0] if ports else None)
+        rx, tx = (settings.line_from_labels(labels, line, port_name) for line in ("rx", "tx"))
         if rx is None or tx is None:
-            where = f"{profile}." if profile else ""
+            where = f"{port_name}." if port_name else ""
             raise RuntimeError(f"no single {where}rx / {where}tx line in the probe's labels (rx {rx}, tx {tx}; "
                                f"ports: {', '.join(ports) or 'none'}): label them, oep settings set <probe> core "
                                f"channel.<GPIO>.label={where}rx channel.<GPIO>.label={where}tx --save")
