@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+
+## 0.0.10
 - (EN) OEP probes move to oep-client-python's pytest plugin (`oep_host`, `oep_uart`, the lock of `oep://` and of a USB OEP probe's serial port), where the OEP session belongs now that a broker's sharing is OEP's own (host guide §7). Removed here: `oep_host`, the OEP side of `ch32_uart` (on an `oep://` port it stops with an error pointing to `oep_uart`) and the dependency on oep-client-python. `ch32_uart` is the WCH-Link's UART bridge only.
 - (JA) OEP の probe は oep-client-python の pytest プラグイン（`oep_host`、`oep_uart`、`oep://` と USB の OEP の probe の serial port のロック）に移った。ブローカーの相乗りが OEP 自身のもの（host ガイド §7）になり、OEP の session はそちらの層のものになったため。ここから外したもの: `oep_host`、`ch32_uart` の OEP の側（`oep://` の port では `oep_uart` を案内するエラーで止まる）、oep-client-python への依存。`ch32_uart` は WCH-Link の UART bridge だけ。
 - (EN) The device lock of a WCH-Link is named `probe:<unit_id>`, the OEP family's name (was `ch32rv-probe:<id>`), the unit_id the one ch32rv's broker gives the Link: `wchlink://<serial>`, the Link's serial port and `oep://<unit_id>?via=...` take one lock. A serial port is named only when it is a WCH-Link's (USB 1a86:8010 / 8011 / 8012); `oep://` and other ports are left to oep-client-python and the upstream rule.
