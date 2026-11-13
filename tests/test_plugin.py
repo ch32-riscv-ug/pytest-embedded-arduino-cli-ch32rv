@@ -1,4 +1,5 @@
 """Board-free checks of the plugin: the parts that do not need a probe."""
+import re
 import types
 
 import pytest
@@ -139,10 +140,14 @@ def test_the_device_lock_key_of_a_serial_port_is_its_usb_serial(monkeypatch, tmp
 
 
 def test_the_fixtures_are_registered(pytester):
-    result = pytester.runpytest("--fixtures")
+    """--setup-plan resolves the fixtures without running them (not --fixtures: with pytest 9.2.0 it stops on
+    pytest-embedded-arduino-cli's fixtures that override pytest-embedded's)."""
+    pytester.makepyfile("def test_x(ch32rv, oep_host, ch32_uart):\n    pass\n")
+    result = pytester.runpytest("--setup-plan")
     out = result.stdout.str()
+    assert "fixture 'ch32rv' not found" not in out
     for name in ("ch32rv", "oep_host", "ch32_uart"):
-        assert name in out
+        assert re.search(rf"SETUP +[SPMCF] {name}\b", out), out
 
 
 @pytest.mark.parametrize("knows_share, opens", [

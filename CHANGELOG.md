@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+- (EN) Bump dependencies to the latest: oep-client-python 0.0.54 and pytest-embedded-arduino-cli 1.11.1 as the lower bounds, the lock to pytest 9.2.0 and the rest; development and CI on Python 3.14; GitHub Actions checkout v7, setup-python v7, setup-uv v7, action-gh-release v3.
+- (JA) 依存を最新に: oep-client-python 0.0.54 と pytest-embedded-arduino-cli 1.11.1 を下限に、lock は pytest 9.2.0 ほか最新に。開発と CI は Python 3.14。GitHub Actions は checkout v7、setup-python v7、setup-uv v7、action-gh-release v3。
 
 ## 0.0.8
 - (EN) `oep_host` opens with ch32rv's named extension `io.github.ch32-riscv-ug.share`, so ch32rv's broker lets the session share the lock its monitor, flash and gdb hold (the dut's monitor runs beside the test); an endpoint that does not know the extension refuses it (unsupported 0xFF) and the open goes again without it. Needs ch32rv 2cea5d4 or later for the sharing; with an older broker the plain open is used. Requires oep-client-python 0.0.43 (`Host.open(extensions=...)`).
