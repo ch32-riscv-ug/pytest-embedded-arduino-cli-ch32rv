@@ -28,8 +28,8 @@ pytest-embedded-arduino-cli の機器ロックは、port が `oep://`、`wchlink
 （`ch32rv-probe:<unit_id か USB の serial>`）を取る。serial の無い USB-UART の先の probe（CH340 の先の ESP32 など）は `oep://` の住所と
 結び付けられないので、どの実行でも同じ書き方で名指す。
 
-`oep_host` は dut の monitor が起こすブローカーを最大 10 秒待つ。その session は、ch32rv の open の拡張
-`io.github.ch32-riscv-ug.share` で、ch32rv の道具（monitor、flash、gdb）のロックに相乗りする。OEP の session は 60 秒の lease を持ち、試験が使うたびに延ばす。
+`oep_host` は dut の monitor が起こすブローカーを最大 10 秒待つ。その session は、open の拡張
+`oep.probe.share`（OEP host ガイド §7.1）で、ch32rv の道具（monitor、flash、gdb）のロックに相乗りする。OEP の session は 60 秒の lease を持ち、試験が使うたびに延ばす。
 それより長く黙っている試験では session が切れる。
 
 ```sh

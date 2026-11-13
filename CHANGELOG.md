@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+- (EN) `oep_host` shares the broker's lock through the standard named extension `oep.probe.share` (OEP host guide §7.1) instead of `io.github.ch32-riscv-ug.share`, following ch32rv 6fdc7b5, which accepts only the standard one. Sharing needs that ch32rv or later; with an older broker the open falls back to a plain one (and a monitor running beside it holds the lock).
+- (JA) `oep_host` は、ブローカーのロックへの相乗りに `io.github.ch32-riscv-ug.share` ではなく標準の名前つき拡張 `oep.probe.share`（OEP host ガイド §7.1）を使う。標準のものだけを受ける ch32rv 6fdc7b5 に合わせた。相乗りにはその ch32rv 以降が要り、それより前のブローカーでは拡張なしの open に落ちる（並んで動く monitor がロックを持っていれば取れない）。
 - (EN) Bump dependencies to the latest: oep-client-python 0.0.54 and pytest-embedded-arduino-cli 1.12.0 as the lower bounds, the lock to pytest 9.2.0 and the rest; development and CI on Python 3.14; GitHub Actions checkout v7, setup-python v7, setup-uv v7, action-gh-release v3.
 - (JA) 依存を最新に: oep-client-python 0.0.54 と pytest-embedded-arduino-cli 1.12.0 を下限に、lock は pytest 9.2.0 ほか最新に。開発と CI は Python 3.14。GitHub Actions は checkout v7、setup-python v7、setup-uv v7、action-gh-release v3。
 

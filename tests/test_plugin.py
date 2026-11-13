@@ -146,11 +146,11 @@ def test_the_fixtures_are_registered(pytester):
 
 
 @pytest.mark.parametrize("knows_share, opens", [
-    (True, [["io.github.ch32-riscv-ug.share"]]),
-    (False, [["io.github.ch32-riscv-ug.share"], []]),
+    (True, [["oep.probe.share"]]),
+    (False, [["oep.probe.share"], []]),
 ])
 def test_oep_host_asks_the_broker_to_share_its_lock(monkeypatch, knows_share, opens):
-    """ch32rv's broker shares the lock of its tools with an open that carries its named extension; an endpoint that
+    """A broker shares the lock of its tools with an open that carries oep.probe.share (host guide §7.1); an endpoint that
     does not know it refuses unsupported 0xFF, and the open goes again without it."""
     from oep_client import host as oh, link
     seen = []

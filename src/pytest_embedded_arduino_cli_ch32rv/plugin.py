@@ -29,7 +29,7 @@ _LEASE_MS = 60000                  # oep-spec: probes accept 1000..60000 as aske
 _KEEPALIVE_S = _LEASE_MS / 3000.0  # refresh a third of the way in, on the next use
 _BROKER_WAIT_S = 10.0              # for the dut's monitor to start the broker
 _EXPECT_TIMEOUT_S = 30.0           # pytest-embedded's Dut default
-_SHARE = "io.github.ch32-riscv-ug.share"  # ch32rv's broker: share the lock its monitor / flash / gdb hold
+_SHARE = "oep.probe.share"  # host guide §7.1: a broker shares the lock its tools (monitor / flash / gdb) hold
 
 
 # ------------------------------------------------------------------ the test's port and the probe behind it
@@ -186,7 +186,7 @@ class _Ch32Uart:
 class _OepHost:
     """The `oep_host` fixture: an oep-client-python Host in a session on the probe behind the test's port, through
     ch32rv's broker (the one the dut's monitor started). The open asks the broker to share the lock its own tools
-    hold (ch32rv's named extension io.github.ch32-riscv-ug.share), so the session runs beside the dut's monitor; an
+    hold (host guide §7.1's named extension oep.probe.share), so the session runs beside the dut's monitor; an
     endpoint that does not know the extension gets a plain open. Its interface is `host` (the Host) and `touch()`,
     which keeps the session's lease alive and runs on every use through `ch32_uart` - a test that goes quiet for
     longer than the lease (60 s) loses its session."""
