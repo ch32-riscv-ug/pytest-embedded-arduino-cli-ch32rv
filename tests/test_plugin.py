@@ -149,3 +149,37 @@ def test_the_fixtures_are_registered(pytester):
     for name in ("ch32rv", "ch32_uart"):
         assert name in out
     assert "oep_host" not in out or "oep_client" in out  # oep_host is oep-client-python's, if that is installed
+
+
+@pytest.mark.parametrize("baud, rates", [(115200, [9600, 115200]), (9600, [115200, 9600])])
+def test_ch32_uart_passes_another_rate_first(monkeypatch, baud, rates):
+    """The Link's bridge is rebuilt by a change of line coding: open at another rate, then the asked one, and drop
+    what came before."""
+    import serial
+    seen = []
+
+    class FakeSerial:
+        def __init__(self, port, rate, **kw):
+            seen.append(rate)
+
+        @property
+        def baudrate(self):
+            return seen[-1]
+
+        @baudrate.setter
+        def baudrate(self, rate):
+            seen.append(rate)
+
+        def reset_input_buffer(self):
+            seen.append("flush")
+
+        def read(self, n):
+            return b""
+
+        write = close = lambda self, *a: None
+
+    monkeypatch.setattr(plugin, "_run_ch32rv", lambda ch32rv, *args, **kw: PROBES)
+    monkeypatch.setattr(serial, "Serial", FakeSerial)
+    request = types.SimpleNamespace(config=config_with_port("wchlink://FBC18F0680B0"))
+    plugin._Ch32Uart(request, "ch32rv").open(baud)
+    assert seen == [*rates, "flush"]

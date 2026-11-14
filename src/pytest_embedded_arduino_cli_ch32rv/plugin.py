@@ -27,6 +27,7 @@ import pexpect.spawnbase
 import pytest
 
 _EXPECT_TIMEOUT_S = 30.0  # pytest-embedded's Dut default
+_OTHER_BAUD = 9600         # the rate ch32_uart passes through before the asked one
 _WCH_LINK_USB = {(0x1A86, 0x8010), (0x1A86, 0x8011), (0x1A86, 0x8012)}  # ch32rv's wchlink: RISC-V, RISC-V 2, DAP
 
 
@@ -158,7 +159,12 @@ class _Ch32Uart:
             raise RuntimeError(f"no WCH-Link behind {self.address} in `ch32rv probe list` (an OEP probe's UART is "
                                f"oep-client-python's `oep_uart` fixture)")
         import serial
-        s = serial.Serial(bridge, baud, timeout=0, exclusive=True)
+        # Open at another rate, then switch: the line coding changes on the Link (SET_LINE_CODING), which rebuilds
+        # its UART bridge. A CH549 WCH-Link's bridge can be left running late (every byte from the DUT out a fixed
+        # count behind, the last run's bytes first); opening straight at the same rate as before keeps that.
+        s = serial.Serial(bridge, _OTHER_BAUD if baud != _OTHER_BAUD else 115200, timeout=0, exclusive=True)
+        s.baudrate = baud
+        s.reset_input_buffer()
         self.channel = _Channel(lambda: s.read(4096), s.write, f"uart {bridge} @{baud}")
         self._close = s.close
         return self.channel

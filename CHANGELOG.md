@@ -1,6 +1,8 @@
 # Changelog / 変更履歴
 
 ## Unreleased
+- (EN) `ch32_uart.open(baud)` opens the WCH-Link's serial port at another rate (9600, or 115200 when 9600 is asked) and then switches to `baud`, and drops what came before: the change of line coding rebuilds the Link's UART bridge. A CH549 WCH-Link's bridge could be left running a fixed count of bytes late (the last run's bytes came first and the reply did not), which an open straight at the same rate kept.
+- (JA) `ch32_uart.open(baud)` は WCH-Link の serial port を別の速さ（9600。9600 を頼まれたら 115200）で開いてから `baud` に替え、それまでに来たものを捨てる。line coding が変わると Link が UART の橋渡しを作り直すため。CH549 の WCH-Link では、橋渡しが一定のバイト数だけ遅れたまま残ることがあり（前の回のバイトが先に来て、今回の返りが来ない）、同じ速さでそのまま開くとそれが続いていた。
 
 ## 0.0.10
 - (EN) OEP probes move to oep-client-python's pytest plugin (`oep_host`, `oep_uart`, the lock of `oep://` and of a USB OEP probe's serial port), where the OEP session belongs now that a broker's sharing is OEP's own (host guide §7). Removed here: `oep_host`, the OEP side of `ch32_uart` (on an `oep://` port it stops with an error pointing to `oep_uart`) and the dependency on oep-client-python. `ch32_uart` is the WCH-Link's UART bridge only.
